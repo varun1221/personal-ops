@@ -1,0 +1,14 @@
+.env
+token.json
+credentials.json
+checkpoints.sqlite*
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+evals/*.log
+.DS_Store

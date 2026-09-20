@@ -1,0 +1,49 @@
+[project]
+name = "personal-ops-agent"
+version = "0.1.0"
+description = "A personal ops agent over Obsidian and Gmail, built on MCP + LangGraph"
+requires-python = ">=3.12"
+
+dependencies = [
+    # MCP
+    "mcp>=1.2.0",
+    "langchain-mcp-adapters>=0.1.0",
+
+    # Agent framework
+    "langgraph>=0.3.0",
+    "langgraph-checkpoint-sqlite>=2.0.0",
+    "langchain-core>=0.3.0",
+
+    # Model providers (swappable via MODEL_PROVIDER)
+    "langchain-anthropic>=0.3.0",
+    "langchain-mistralai>=0.2.0",
+
+    # Obsidian vault parsing
+    "python-frontmatter>=1.1.0",
+    "python-dateutil>=2.9.0",
+
+    # Gmail
+    "google-api-python-client>=2.150.0",
+    "google-auth-oauthlib>=1.2.0",
+
+    # CLI
+    "rich>=13.9.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["agent", "vaultlib"]

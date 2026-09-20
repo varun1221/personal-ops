@@ -1,0 +1,6 @@
+{
+  "plannerHeading": "Day planner",
+  "plannerHeadingLevel": 1,
+  "defaultDurationMinutes": 30,
+  "timestampFormat": "HH:mm"
+}

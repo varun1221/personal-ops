@@ -1,0 +1,4 @@
+#!/bin/sh
+# Thin shim so `ops` works from any directory without activating the venv.
+exec "$(dirname "$(dirname "$(realpath "$0")")")/.venv/bin/python" \
+     "$(dirname "$(dirname "$(realpath "$0")")")/ops.py" "$@"
