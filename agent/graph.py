@@ -183,7 +183,7 @@ def build_graph(tools: list[BaseTool], model, checkpointer):
 
             try:
                 result = await tool.ainvoke(call)
-            except Exception as exc:  # noqa: BLE001 - the model gets to see and recover
+            except Exception as exc:
                 result = ToolMessage(
                     content=f"{type(exc).__name__}: {exc}",
                     tool_call_id=call["id"],

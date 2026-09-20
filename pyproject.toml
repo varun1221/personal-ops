@@ -35,6 +35,9 @@ dependencies = [
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
+    # Pinned to a minor version on purpose: ruff's *default* rule set grows
+    # between releases, so an unpinned ruff can fail CI on code nobody touched.
+    "ruff>=0.16,<0.17",
 ]
 
 [tool.pytest.ini_options]
@@ -47,3 +50,23 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["agent", "vaultlib"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+# Ruff's defaults, minus two families that argue with decisions this project
+# made deliberately:
+#
+#   DTZ  A day planner is local time by definition. Resolving "today" in UTC
+#        would roll the date over at the wrong moment for the person reading it.
+#   BLE  Parsing a vault must not crash on one malformed note, and the eval
+#        harness must survive a scenario blowing up mid-run. Both catch broadly
+#        on purpose, and both return a value rather than swallowing silently.
+ignore = ["DTZ", "BLE"]
+
+[tool.ruff.lint.per-file-ignores]
+# This harness has to extend sys.path and load .env before it can import the
+# project at all, so its imports genuinely cannot live in one sorted block.
+"evals/live_eval.py" = ["I001"]

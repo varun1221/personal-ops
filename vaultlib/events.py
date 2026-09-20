@@ -110,7 +110,7 @@ def parse_event_note(path: Path, note_path: str) -> Event | None:
     """Parse a note into an Event, or return None if it isn't one."""
     try:
         post = frontmatter.load(path)
-    except (OSError, UnicodeDecodeError, Exception):  # noqa: B014 - yaml raises broadly
+    except Exception:  # yaml raises broadly, and a bad note must not crash a read
         return None
 
     meta = post.metadata or {}

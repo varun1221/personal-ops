@@ -8,7 +8,6 @@ reported that the user had no commitments — a confident wrong answer.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -90,7 +89,8 @@ def test_limit_is_respected(search):
 def test_server_starts_standalone():
     """A syntax or import error here breaks the whole toolset load, silently."""
     proc = subprocess.run(
-        [sys.executable, "-c", f"import runpy; runpy.run_path({str(SERVER)!r})"],
+        check=False,
+        args=[sys.executable, "-c", f"import runpy; runpy.run_path({str(SERVER)!r})"],
         capture_output=True,
         timeout=30,
         input=b"",

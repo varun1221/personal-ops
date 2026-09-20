@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import date as date_type, datetime, timedelta
 from pathlib import Path
 
 from vaultlib.dayplanner import (
@@ -26,7 +25,8 @@ from vaultlib.dayplanner import (
     split_time_block,
 )
 from vaultlib.paths import VaultPathError, VaultPaths
-from vaultlib.tasks import TASK_LINE, _normalize as _normalize_line, parse_task_line
+from vaultlib.tasks import TASK_LINE, parse_task_line
+from vaultlib.tasks import _normalize as _normalize_line
 
 # Characters that are illegal or awkward in filenames across the platforms a
 # vault gets synced between.

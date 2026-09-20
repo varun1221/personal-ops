@@ -38,9 +38,9 @@ _MERIDIEM = r"(?:\s*(?P<mer>am|pm|a\.m\.|p\.m\.))"
 _HHMM = r"(?P<h>\d{1,2})(?::(?P<m>\d{2}))?"
 
 TIME_RANGE = re.compile(
-    rf"\b(?P<h1>\d{{1,2}})(?::(?P<m1>\d{{2}}))?(?:\s*(?P<mer1>am|pm))?"
-    rf"\s*(?:-|–|—|to|until|till)\s*"
-    rf"(?P<h2>\d{{1,2}})(?::(?P<m2>\d{{2}}))?(?:\s*(?P<mer2>am|pm))?\b",
+    r"\b(?P<h1>\d{1,2})(?::(?P<m1>\d{2}))?(?:\s*(?P<mer1>am|pm))?"
+    r"\s*(?:-|–|—|to|until|till)\s*"
+    r"(?P<h2>\d{1,2})(?::(?P<m2>\d{2}))?(?:\s*(?P<mer2>am|pm))?\b",
     re.IGNORECASE,
 )
 # Anchored first: "1:1 with Priya at 3pm" must take 3pm, not read the meeting's

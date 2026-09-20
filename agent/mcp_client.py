@@ -77,7 +77,7 @@ async def load_tools(client: MultiServerMCPClient) -> list[BaseTool]:
     for name in client.connections:
         try:
             tools.extend(await client.get_tools(server_name=name))
-        except Exception as exc:  # noqa: BLE001 - surfacing which server broke is the point
+        except Exception as exc:
             failures.append(f"  {name}: {type(exc).__name__}: {exc}")
 
     if failures:

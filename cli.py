@@ -17,7 +17,7 @@ import uuid
 # delete, and a pasted newline submits mid-sentence. macOS ships libedit rather
 # than GNU readline; both work for this, and neither is worth failing over.
 try:
-    import readline  # noqa: F401
+    import readline
 except ImportError:  # pragma: no cover - Windows without pyreadline
     readline = None
 
@@ -165,7 +165,7 @@ async def main() -> int:
                 await run_turn(graph, config, user_input)
             except KeyboardInterrupt:
                 console.print("\n[yellow]interrupted[/yellow]")
-            except Exception as exc:  # noqa: BLE001 - a bad turn shouldn't kill the REPL
+            except Exception as exc:
                 console.print(f"[red]{type(exc).__name__}:[/red] {exc}")
 
 

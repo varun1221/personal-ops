@@ -11,7 +11,6 @@ Run standalone for inspection:
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from datetime import date, timedelta
@@ -20,8 +19,9 @@ from pathlib import Path
 # Allow `python servers/obsidian/server.py` from the project root without install.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import frontmatter
 import warnings
+
+import frontmatter
 
 # pydantic-settings emits an IncompleteFieldDefinitionWarning while the MCP
 # library imports. It is internal to that library, harmless, and prints to
@@ -391,7 +391,6 @@ def week_overview(start_date: str | None = None) -> str:
     Args:
         start_date: YYYY-MM-DD. Any date in the week; it snaps back to Monday.
     """
-    paths = vault()
     try:
         anchor = _parse_date(start_date, date.today())
     except ValueError as exc:

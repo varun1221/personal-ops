@@ -3,7 +3,13 @@
 Usage:  python harness.py [read|write|memory|all]
 """
 from __future__ import annotations
-import asyncio, os, shutil, sys, tempfile, time, uuid
+
+import asyncio
+import os
+import shutil
+import sys
+import tempfile
+import uuid
 from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parent.parent; sys.path.insert(0, str(PROJECT)); os.chdir(PROJECT)
@@ -13,7 +19,8 @@ from dotenv import load_dotenv; load_dotenv(PROJECT / ".env")
 STAGE = (sys.argv[1] if len(sys.argv) > 1 else "all").lower()
 
 TMP = Path(tempfile.mkdtemp(prefix="eval-")); VAULT = TMP / "vault"; SNAP = TMP / "snap"
-shutil.copytree(Path.home() / "vault", VAULT)
+SOURCE_VAULT = Path(os.environ.get("OBSIDIAN_VAULT_PATH") or Path.home() / "vault").expanduser()
+shutil.copytree(SOURCE_VAULT, VAULT)
 for p in (VAULT / "Schedules").glob("*.md"): p.unlink()
 shutil.copytree(SP / "seed", VAULT, dirs_exist_ok=True)
 os.environ["OBSIDIAN_VAULT_PATH"] = str(VAULT)
@@ -22,6 +29,7 @@ os.environ.pop("OBSIDIAN_DAILY_FOLDER", None)
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
+
 from agent import models
 from agent.graph import build_graph
 from agent.mcp_client import build_client, load_tools
@@ -79,13 +87,13 @@ async def scenario(graph, name, text, decisions, check, thread=None, attempts=4)
             if is_rate_limit(e) and attempt < attempts:
                 wait = 45 * attempt
                 print(f"  [429 — restoring vault, waiting {wait}s ({attempt}/{attempts})]", flush=True)
-                restore(); time.sleep(wait); continue
+                restore(); await asyncio.sleep(wait); continue
             record(name, False, f"EXCEPTION {type(e).__name__}: {str(e)[:140]}")
             return None
         print(f"  [prompts] {prompts}\n  [tools]   {tools}\n  [reply]   {reply.strip()[:260]}", flush=True)
         ok, detail = check(reply, prompts, tools)
         record(name, ok, detail)
-        time.sleep(PACE)
+        await asyncio.sleep(PACE)
         return cfg
     record(name, False, "rate limited after all retries")
     return None
@@ -152,7 +160,7 @@ async def main():
         try:
             print("\n> [mem] What's on my calendar Thursday?", flush=True)
             r1, _, _ = await ask(graph, cfg, "What's on my calendar Thursday?", [])
-            print(f"  [reply] {r1.strip()[:200]}", flush=True); time.sleep(PACE)
+            print(f"  [reply] {r1.strip()[:200]}", flush=True); await asyncio.sleep(PACE)
             print("\n> [mem] What time does the first one start?", flush=True)
             r2, _, _ = await ask(graph, cfg, "What time does the first one start?", [])
             print(f"  [reply] {r2.strip()[:200]}", flush=True)

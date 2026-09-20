@@ -87,7 +87,7 @@ def test_week_overview_snaps_to_monday(obsidian, dp_vault):
     result = json.loads(obsidian.week_overview("2026-08-20"))
     assert result["week_start"] == "2026-08-17"
     assert result["week_end"] == "2026-08-23"
-    assert [d["day_of_week"] for d in result["days"]][0] == "Monday"
+    assert result["days"][0]["day_of_week"] == "Monday"
     assert len(result["days"]) == 7
 
 

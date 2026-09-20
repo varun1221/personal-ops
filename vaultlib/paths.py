@@ -25,7 +25,7 @@ class VaultPaths:
     inbox_note: str = "Inbox.md"
 
     @classmethod
-    def from_env(cls) -> "VaultPaths":
+    def from_env(cls) -> VaultPaths:
         raw = os.environ.get("OBSIDIAN_VAULT_PATH")
         if not raw:
             raise VaultPathError(

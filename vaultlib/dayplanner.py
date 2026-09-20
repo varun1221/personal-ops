@@ -49,7 +49,7 @@ class PlannerConfig:
     installed: bool = False
 
     @classmethod
-    def from_vault(cls, vault_root: Path) -> "PlannerConfig":
+    def from_vault(cls, vault_root: Path) -> PlannerConfig:
         """Read the plugin's own settings, falling back to its defaults."""
         plugin_dir = vault_root / ".obsidian" / "plugins" / PLUGIN_ID
         if not plugin_dir.is_dir():

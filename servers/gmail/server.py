@@ -139,7 +139,7 @@ def _guard(fn):
             return fn(*args, **kwargs)
         except GmailAuthError as exc:
             return json.dumps({"error": str(exc), "needs_setup": True})
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return json.dumps({"error": f"{type(exc).__name__}: {exc}"})
 
     wrapper.__name__ = fn.__name__

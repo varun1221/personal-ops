@@ -15,7 +15,6 @@ Run standalone for inspection:
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from datetime import date as date_type
@@ -37,14 +36,11 @@ from vaultlib.dayplanner import (
     PlannerConfig,
     add_minutes,
     format_planner_line,
-    match_entries,
-    parse_planner_note,
     split_time_block,
 )
 from vaultlib.events import format_event_note, parse_event_note
 from vaultlib.paths import VaultPathError, VaultPaths
 from vaultlib.planner_write import (
-    _bare_description,
     _delete_planner_line,
     _locate_planner_entry,
     _locate_task_line,
@@ -56,10 +52,7 @@ from vaultlib.planner_write import (
     calendar_format,
 )
 from vaultlib.tasks import (
-    TASK_LINE,
-    _normalize as _normalize_line,
     format_task_line,
-    parse_task_line,
     set_checkbox,
 )
 

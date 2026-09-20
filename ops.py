@@ -336,12 +336,12 @@ def run_agent(question: str) -> int:
     """Fall back to the full agent. Imports langchain lazily — it costs ~0.8s."""
     import asyncio
 
-    from cli import run_turn  # noqa: PLC0415 - deliberate lazy import
     from langgraph.checkpoint.memory import MemorySaver
 
     from agent import models
     from agent.graph import build_graph
     from agent.mcp_client import build_client, load_tools
+    from cli import run_turn  # imported here on purpose: langchain is slow to load
 
     async def main() -> int:
         try:
