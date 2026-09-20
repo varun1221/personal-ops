@@ -248,10 +248,22 @@ bin/ops             shim so `ops` works from any directory
 agent/              the LangGraph loop, model factory, working-set memory
 vaultlib/           vault parsing shared by the read and write servers
 cli.py              REPL; renders approval prompts and resumes the graph
+CONTEXT.md          the glossary: entry, task, event, overdue, gated tool
+docs/adr/           the three decisions that would be expensive to reverse
 fixtures/           two synthetic vaults (Full Calendar + Tasks, and Day Planner);
                     tests never touch the real one
 evals/              live scenarios run against a real model
 ```
+
+## Decisions and vocabulary
+
+The three decisions above that would be expensive to reverse are written up in
+[`docs/adr/`](docs/adr/): where the gate lives, why approvals are collected
+before any dispatch, and why the fast path does not ask.
+
+[`CONTEXT.md`](CONTEXT.md) is the glossary — what an *entry* is as against a
+*task* or an *event*, why an undated task is never *overdue*, and which word to
+reach for when several would do.
 
 ## Vault formats
 
