@@ -45,3 +45,23 @@ on substrings. A weak assertion here hides a real corruption.
 Mistral's free tier 429s quickly — an agent turn is several calls. `MODEL_RPS`
 throttles the client and `PACE` adds seconds between scenarios; the harness also
 backs off and retries on 429. A full run takes a few minutes by design.
+
+## The manual eval set
+
+Run these end to end in the CLI. They are ordered by what they exercise.
+
+| # | Query | Exercises |
+|---|---|---|
+| 1 | What's on my calendar Thursday? | single source, baseline |
+| 2 | What did I commit to this week that isn't scheduled? | notes + calendar join |
+| 3 | What did I promise anyone over email last week? | Gmail routing |
+| 4 | *(after 1)* Move the second one to Monday | working memory / coreference |
+| 5 | Schedule the thing I said I'd do for Sarah | full loop: read → propose → **interrupt** → write |
+
+Against `fixtures/vault`, #1 should return three events (standup, Design Review, 1-1 with
+Priya), #4 should resolve to the 1-1 with Priya, and #5 should find the commitment in
+`Meetings/2026-08-13 Sync with Sarah.md` — which is written as prose and never made it
+onto the calendar.
+
+Reject once on #5 and confirm nothing was written.
+
