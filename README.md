@@ -30,11 +30,17 @@ nothing was written.
 - **Model output is treated as untrusted.** Every path it proposes is resolved
   against the vault root first, which refuses anything escaping the vault,
   symlinks included.
+- **The vault's conventions are read, not assumed.** Obsidian has no single
+  calendar format, so all three are detected from the vault's own config — and
+  writes follow the same detection, because a Full Calendar note in a vault
+  without that plugin is a file nothing will ever render.
+  ([`docs/vault-formats.md`](docs/vault-formats.md))
 
 | | |
 |---|---|
 | **245 tests, 7.9s, no API key** | including the gate driven end to end against the real MCP servers, with a scripted model standing in for the LLM |
-| **3 MCP servers** | two read-only, one write — hand-authored, each drivable on its own with the Inspector |
+| **16 tools across 3 MCP servers** | 10 read-only and 6 write-gated — hand-authored, each server drivable on its own with the Inspector |
+| **3 vault formats, no configuration** | Full Calendar, Tasks plugin and Day Planner, each detected from the vault's own Obsidian config rather than assumed |
 | **14 live eval scenarios** | run against a real model, because tool *selection* only breaks when a real model is choosing |
 | **0.07s** | the everyday capture path, which never calls a model at all |
 
