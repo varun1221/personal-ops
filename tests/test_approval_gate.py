@@ -15,6 +15,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
+import history
 from agent.graph import build_graph
 from agent.mcp_client import build_client, load_tools
 
@@ -49,8 +50,12 @@ def temp_vault(tmp_path, monkeypatch) -> Path:
     return vault
 
 
-async def _graph_with(responses, include_gmail=False):
-    client = build_client(include_gmail=include_gmail, include_actions=True)
+async def _graph_with(responses, include_gmail=False, include_memory=False):
+    # Memory is left out unless a test calls it: every server is a subprocess,
+    # and one nobody calls still adds about 0.4s to every test here.
+    client = build_client(
+        include_gmail=include_gmail, include_actions=True, include_memory=include_memory
+    )
     tools = await load_tools(client)
     model = ScriptedModel(responses)
     return build_graph(tools, model, MemorySaver()), model
@@ -298,3 +303,58 @@ async def test_precheck_requires_note_path_for_edits(temp_vault):
     assert not result.get("__interrupt__")
     errors = [m for m in result["messages"] if getattr(m, "name", None) == "complete_task"]
     assert errors and "note_path" in errors[0].content
+
+
+async def test_each_answer_is_recorded_exactly_once(temp_vault):
+    """Two gated calls mean two interrupts, so the node replays once more than it
+    finishes. A decision recorded before the last interrupt would be recorded twice.
+    """
+    graph, _ = await _graph_with(
+        [
+            AIMessage(
+                content="Adding both.",
+                tool_calls=[
+                    {"name": "add_task", "args": {"text": "Gym"}, "id": "a", "type": "tool_call"},
+                    {"name": "add_task", "args": {"text": "Run"}, "id": "b", "type": "tool_call"},
+                ],
+            ),
+            AIMessage(content="Left alone."),
+        ]
+    )
+    config = _config()
+
+    await graph.ainvoke({"messages": [HumanMessage("add gym and run")]}, config)
+    await graph.ainvoke(Command(resume={"approved": False, "reason": "not today"}), config)
+    await graph.ainvoke(Command(resume={"approved": False}), config)
+
+    rejections = history.past_rejections()
+    assert sorted(r.args["text"] for r in rejections) == ["Gym", "Run"]
+    assert {r.reason for r in rejections} == {"not today", None}
+
+
+async def test_the_agent_can_read_what_it_was_refused(temp_vault):
+    graph, _ = await _graph_with(
+        [
+            AIMessage(
+                content="Adding it.",
+                tool_calls=[
+                    {"name": "add_task", "args": {"text": "Gym"}, "id": "a", "type": "tool_call"}
+                ],
+            ),
+            AIMessage(
+                content="Checking.",
+                tool_calls=[
+                    {"name": "past_rejections", "args": {}, "id": "r", "type": "tool_call"}
+                ],
+            ),
+            AIMessage(content="You said no to that before."),
+        ],
+        include_memory=True,
+    )
+    config = _config()
+
+    await graph.ainvoke({"messages": [HumanMessage("add gym")]}, config)
+    result = await graph.ainvoke(Command(resume={"approved": False, "reason": "rest day"}), config)
+
+    [answer] = [m for m in result["messages"] if getattr(m, "name", None) == "past_rejections"]
+    assert "rest day" in str(answer.content)

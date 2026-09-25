@@ -16,6 +16,9 @@ Then edit `.env`:
   you trust it.
 - `MODEL_PROVIDER` + the matching API key. `anthropic` for reliable tool calling while
   you debug the graph; `mistral` for the free tier.
+- `OPS_STATE_DIR` — optional. Where the history store and conversation checkpoints
+  live. Defaults to `$XDG_STATE_HOME/ops`, else `~/.local/state/ops`. Keep it out
+  of the vault: a sync service would copy a live SQLite file mid-write.
 
 ## Gmail
 

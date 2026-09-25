@@ -14,10 +14,12 @@ import json
 from typing import Any, Literal
 
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
+import history
 from agent.mcp_client import GATED_TOOLS
 from agent.prompts import system_prompt
 from agent.state import AgentState, extract_working_set
@@ -109,7 +111,7 @@ def build_graph(tools: list[BaseTool], model, checkpointer):
         response = await model_with_tools.ainvoke(messages)
         return {"messages": [response]}
 
-    async def call_tools(state: AgentState) -> dict:
+    async def call_tools(state: AgentState, config: RunnableConfig) -> dict:
         last = state["messages"][-1]
         tool_calls = getattr(last, "tool_calls", None) or []
 
@@ -136,6 +138,20 @@ def build_graph(tools: list[BaseTool], model, checkpointer):
                 }
             )
             decisions[call["id"]] = _normalize_decision(answer)
+
+        # Past the last interrupt, so each answer is recorded once however many
+        # times this node replayed on the way here.
+        thread_id = (config.get("configurable") or {}).get("thread_id")
+        for call in tool_calls:
+            if decision := decisions.get(call["id"]):
+                history.record_approval(
+                    call["name"],
+                    call["args"],
+                    describe_call(call["name"], call["args"]),
+                    approved=decision["approved"],
+                    reason=decision.get("reason"),
+                    thread_id=thread_id,
+                )
 
         messages: list[ToolMessage] = []
         for call in tool_calls:

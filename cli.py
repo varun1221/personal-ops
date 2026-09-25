@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 import uuid
 
@@ -29,13 +30,21 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
+import history
 from agent import models
 from agent.graph import build_graph
 from agent.mcp_client import build_client, load_tools
 
 console = Console()
 
-CHECKPOINT_DB = "checkpoints.sqlite"
+def checkpoint_db():
+    """Beside the history store, not in the working directory: a relative path made
+    every directory ops was run from a separate, silently empty set of threads.
+
+    A function, not a constant, so OPS_STATE_DIR set in .env is seen — that is
+    only loaded once main() runs.
+    """
+    return history.state_dir() / "checkpoints.sqlite"
 
 
 def ask_approval(request: dict) -> dict:
@@ -92,6 +101,15 @@ def show_tools(tools) -> None:
         console.print(f"  [cyan]{server}[/cyan]: {', '.join(sorted(names))}")
 
 
+MEMORY_TOOLS = {
+    "entry_history",
+    "open_sightings",
+    "record_sighting",
+    "resolve_sighting",
+    "past_rejections",
+}
+
+
 def _server_of(tool_name: str) -> str:
     from agent.mcp_client import GATED_TOOLS
 
@@ -99,6 +117,8 @@ def _server_of(tool_name: str) -> str:
         return "actions (write, gated)"
     if tool_name in {"search_email", "read_thread", "list_recent"}:
         return "gmail (read-only)"
+    if tool_name in MEMORY_TOOLS:
+        return "memory (history, not the vault)"
     return "obsidian (read-only)"
 
 
@@ -117,6 +137,10 @@ async def main() -> int:
         console.print(f"[red]{exc}[/red]")
         return 1
 
+    thread_id = args.thread or str(uuid.uuid4())
+    # The servers inherit this at launch, so a Change can name the conversation
+    # that made it.
+    os.environ["OPS_THREAD_ID"] = thread_id
     client = build_client(
         include_gmail=not args.no_gmail, include_actions=not args.read_only
     )
@@ -127,8 +151,6 @@ async def main() -> int:
     except RuntimeError as exc:
         console.print(f"[red]{exc}[/red]")
         return 1
-
-    thread_id = args.thread or str(uuid.uuid4())
 
     console.print(
         Panel(
@@ -142,7 +164,9 @@ async def main() -> int:
     show_tools(tools)
     console.print("\n[dim]Ask a question, or 'exit' to quit.[/dim]")
 
-    async with AsyncSqliteSaver.from_conn_string(CHECKPOINT_DB) as checkpointer:
+    checkpoints = checkpoint_db()
+    checkpoints.parent.mkdir(parents=True, exist_ok=True)
+    async with AsyncSqliteSaver.from_conn_string(str(checkpoints)) as checkpointer:
         graph = build_graph(tools, model, checkpointer)
         config = {"configurable": {"thread_id": thread_id}}
 

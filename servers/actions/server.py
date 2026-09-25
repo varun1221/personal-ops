@@ -32,6 +32,7 @@ warnings.filterwarnings("ignore", message=".*incomplete definition.*")
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
+import history
 from vaultlib.dayplanner import (
     PlannerConfig,
     add_minutes,
@@ -53,6 +54,7 @@ from vaultlib.planner_write import (
 )
 from vaultlib.tasks import (
     format_task_line,
+    parse_task_line,
     set_checkbox,
 )
 
@@ -67,6 +69,17 @@ UNSAFE_FILENAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 def vault() -> VaultPaths:
     return VaultPaths.from_env()
+
+
+def record(kind: str, note_path: str, description: str, **follow) -> None:
+    """Every write here was approved: that is the only way these tools run."""
+    history.record_change(kind, note_path, description, via="approved", **follow)
+
+
+def wording(paths: VaultPaths, text: str) -> str:
+    """An entry's words alone, no checkbox or time block — how History knows it."""
+    config = PlannerConfig.from_vault(paths.root)
+    return _strip_decoration(text, config.default_duration_minutes)
 
 
 
@@ -109,9 +122,10 @@ def create_calendar_event(
         return json.dumps({"error": f"end_time {end_time} is not after start_time {start_time}"})
 
     if calendar_format(paths) == "day_planner":
-        return json.dumps(
-            _write_planner_event(paths, title, date, start_time, end_time), indent=2
-        )
+        written = _write_planner_event(paths, title, date, start_time, end_time)
+        if "error" not in written:
+            record("created", written["note_path"], title)
+        return json.dumps(written, indent=2)
 
     events_dir = paths.events_dir
     events_dir.mkdir(parents=True, exist_ok=True)
@@ -132,6 +146,7 @@ def create_calendar_event(
     except (OSError, ValueError) as exc:
         return json.dumps({"error": f"Could not write the event: {exc}"})
 
+    record("created", paths.relative(target), title)
     return json.dumps(
         {
             "created": True,
@@ -184,6 +199,7 @@ def delete_event(
             removed = _delete_planner_line(target, entry)
         except OSError as exc:
             return json.dumps({"error": f"Could not update the note: {exc}"})
+        record("deleted", paths.relative(target), entry.description)
         return json.dumps(
             {
                 "deleted": True,
@@ -201,7 +217,8 @@ def delete_event(
     except VaultPathError as exc:
         return json.dumps({"error": str(exc)})
 
-    if parse_event_note(target, note_path) is None:
+    event = parse_event_note(target, note_path)
+    if event is None:
         return json.dumps(
             {
                 "error": f"{note_path} is not a calendar event note; refusing to delete "
@@ -215,6 +232,7 @@ def delete_event(
     except OSError as exc:
         return json.dumps({"error": f"Could not delete the note: {exc}"})
 
+    record("deleted", paths.relative(target), event.title)
     return json.dumps(
         {
             "deleted": True,
@@ -306,6 +324,10 @@ def move_event(
             }
         )
 
+    record(
+        "moved", paths.relative(source_note), entry.description,
+        new_note_path=written["note_path"],
+    )
     return json.dumps(
         {
             "moved": True,
@@ -379,6 +401,11 @@ def complete_task(
     except OSError as exc:
         return json.dumps({"error": f"Could not update the note: {exc}"})
 
+    record(
+        "completed" if done else "reopened",
+        paths.relative(target),
+        wording(paths, task.description),
+    )
     return json.dumps(
         {
             "updated": True,
@@ -452,6 +479,12 @@ def rename_entry(
     except OSError as exc:
         return json.dumps({"error": f"Could not update the note: {exc}"})
 
+    record(
+        "renamed",
+        paths.relative(target),
+        wording(paths, task.description),
+        new_description=new_text.strip(),
+    )
     return json.dumps(
         {
             "updated": True,
@@ -507,6 +540,15 @@ def add_task(
     except OSError as exc:
         return json.dumps({"error": f"Could not append the task: {exc}"})
 
+    # The line's own description, not the text as given: a model that puts
+    # "📅 2026-09-30" in the text has it parsed out as a due date, and completing
+    # the task later will find it by what is left.
+    written = parse_task_line(line)
+    record(
+        "created",
+        paths.relative(target),
+        wording(paths, written.description if written else text),
+    )
     return json.dumps(
         {
             "created": True,

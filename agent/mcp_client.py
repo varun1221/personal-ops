@@ -33,7 +33,9 @@ def _python() -> str:
     return sys.executable
 
 
-def server_config(include_gmail: bool = True, include_actions: bool = True) -> dict:
+def server_config(
+    include_gmail: bool = True, include_actions: bool = True, include_memory: bool = True
+) -> dict:
     """Build the connection map. Servers are opt-out so early phases can run lean."""
     config = {
         "obsidian": {
@@ -41,8 +43,17 @@ def server_config(include_gmail: bool = True, include_actions: bool = True) -> d
             "args": [str(SERVERS_DIR / "obsidian" / "server.py")],
             "transport": "stdio",
             "env": dict(os.environ),
-        }
+        },
     }
+    if include_memory:
+        # Writes to the history store only, never the vault, so it is not gated
+        # and stays in even with --read-only.
+        config["memory"] = {
+            "command": _python(),
+            "args": [str(SERVERS_DIR / "memory" / "server.py")],
+            "transport": "stdio",
+            "env": dict(os.environ),
+        }
     if include_gmail:
         config["gmail"] = {
             "command": _python(),

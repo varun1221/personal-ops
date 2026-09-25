@@ -4,12 +4,18 @@
 when a real model is choosing the tool calls.
 
 ```bash
-MODEL_RPS=0.4 PACE=8 ./.venv/bin/python evals/live_eval.py [read|write|memory|all]
+MODEL_RPS=0.4 PACE=8 ./.venv/bin/python evals/live_eval.py [read|write|memory|history|all]
 ```
 
 Runs against a throwaway copy of your real vault (for its `.obsidian` config)
-with `evals/seed/` written over the daily notes. **Your vault is never touched.**
-Costs real API calls.
+with `evals/seed/` written over the daily notes. **Your vault is never touched**,
+and neither is your history store — `OPS_STATE_DIR` points into the same temp
+directory. Costs real API calls.
+
+The `history` stage exists because Sightings are the one piece of History only the
+model can write: nothing records one unless it calls `record_sighting` for each
+commitment it raises. A unit test can prove the tool works; only a live run shows
+whether the model remembers to call it.
 
 Every scenario carries an assertion, so the output is PASS/FAIL rather than
 something to eyeball. Approvals are scripted; rejections are scripted too, and

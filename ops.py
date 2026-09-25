@@ -7,6 +7,7 @@
     ops week                      the week at a glance
     ops done standup              tick something off
     ops free 90                   gaps big enough for 90 minutes
+    ops history standup           when it was added, done, moved
     ops rm gym                    remove a block (asks first)
     ops ask <anything>            full agent, for whatever the above cannot do
     ops chat                      the interactive REPL
@@ -18,6 +19,7 @@ the phrasing is not one it is sure about, fall back to the agent.
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -28,6 +30,8 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.markup import escape
 
+import history
+from history.answers import describe
 from vaultlib.agenda import (
     Agenda,
     collapse_overdue,
@@ -41,6 +45,7 @@ from vaultlib.planner_write import (
     _delete_planner_line,
     _locate_planner_entry,
     _locate_task_line,
+    _strip_decoration,
     _write_planner_event,
 )
 from vaultlib.quickparse import parse_capture
@@ -59,6 +64,10 @@ def die(message: str) -> int:
 
 def vault() -> VaultPaths:
     return VaultPaths.from_env()
+
+
+def record(kind: str, note_path: str, description: str) -> None:
+    history.record_change(kind, note_path, description, via="fast_path")
 
 
 def resolve_day(word: str | None) -> date:
@@ -174,6 +183,7 @@ def cmd_add(text: str) -> int:
     )
     if "error" in result:
         return die(result["error"])
+    record("created", result["note_path"], capture.title)
 
     console.print(
         f"[green]added[/green]  [cyan]{capture.start_time}–{capture.end_time}[/cyan]  "
@@ -216,9 +226,44 @@ def cmd_done(text: str, day_word: str | None = None, done: bool = True) -> int:
 
     lines[index] = after
     target.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
+    note_path = paths.relative(target)
+    config = PlannerConfig.from_vault(paths.root)
+    description = _strip_decoration(task.description, config.default_duration_minutes)
+    record("completed" if done else "reopened", note_path, description)
+
     verb = "done" if done else "reopened"
     console.print(f"[green]{verb}[/green]  {escape(after.strip())}")
-    console.print(f"[dim]{paths.relative(target)}[/dim]")
+    # Under a day says nothing worth reading; it was captured and done today.
+    recorded = history.entry(note_path, description) if done else None
+    if recorded and (days := describe(paths, recorded)["open_for_days"]):
+        console.print(f"[dim]it had been open {days} day{'s' if days != 1 else ''}[/dim]")
+    console.print(f"[dim]{note_path}[/dim]")
+    return 0
+
+
+# ---------------------------------------------------------------------- history
+
+
+def cmd_history(text: str) -> int:
+    """When an Entry was added, done, moved — as recorded, checked against the vault."""
+    paths = vault()
+    entries = history.history_for(text)
+    if not entries:
+        console.print(
+            f"[dim]no history for[/dim] {escape(text)}[dim] — only changes made "
+            "through ops or the agent are recorded, so this is not a no.[/dim]"
+        )
+        return 0
+
+    for entry in entries:
+        answer = describe(paths, entry)
+        console.print(f"\n[bold]{escape(entry.description)}[/bold]  [dim]{entry.note_path}[/dim]")
+        console.print(f"  {escape(answer['summary'])}")
+        for change in entry.changes:
+            via = change.via.replace("_", " ")
+            console.print(
+                f"  [dim]{change.at:%a %-d %b %Y %H:%M}[/dim]  {change.kind}  [dim]{via}[/dim]"
+            )
     return 0
 
 
@@ -277,6 +322,7 @@ def cmd_rm(text: str, day_word: str | None = None) -> int:
         return 0
 
     removed = _delete_planner_line(target, entry)
+    record("deleted", paths.relative(target), entry.description)
     console.print(f"[green]removed[/green]  {escape(removed.strip())}")
     return 0
 
@@ -348,6 +394,9 @@ def run_agent(question: str) -> int:
             model = models.get_model()
         except (RuntimeError, ValueError) as exc:
             return die(str(exc))
+        # A one-shot run keeps no checkpoint, so its Changes carry no thread id:
+        # there would be nothing for one to point at.
+        os.environ.pop("OPS_THREAD_ID", None)
         client = build_client(include_gmail=False, include_actions=True)
         try:
             tools = await load_tools(client)
@@ -373,6 +422,7 @@ USAGE = """[bold]ops[/bold] — day planner capture
   [cyan]ops done[/cyan] standup           tick it off
   [cyan]ops undone[/cyan] standup         put it back
   [cyan]ops free[/cyan] 90                gaps of at least 90 minutes
+  [cyan]ops history[/cyan] standup        when it was added, done, moved
   [cyan]ops rm[/cyan] gym                 remove a block (asks first)
   [cyan]ops ask[/cyan] what do I owe Sarah?   full agent
   [cyan]ops chat[/cyan]                   interactive session
@@ -406,6 +456,8 @@ def main(argv: list[str]) -> int:
     if command == "free":
         minutes = int(rest[0]) if rest and rest[0].isdigit() else 30
         return cmd_free(minutes, rest[1] if len(rest) > 1 else None)
+    if command == "history":
+        return cmd_history(text) if text else die("history of what?")
     if command == "ask":
         return run_agent(text) if text else die("ask what?")
     if command == "chat":

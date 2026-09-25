@@ -112,3 +112,24 @@ A tool declining to act because what it was asked is ambiguous or invalid,
 naming what it found rather than choosing. Distinct from an Approval that was
 answered no: a refusal is the tool's decision, an approval is the person's.
 _Avoid_: rejection, failure, error
+
+### What it remembers
+
+**Change**:
+One recorded mutation to an Entry — created, completed, reopened, renamed, moved
+or deleted — with when it happened and which path made it, the fast path or an
+approved call. A Change records *when*; whether an Entry is open or done is
+always read from the vault, never from its Changes.
+_Avoid_: event (that is time occupied), log entry, edit
+
+**History**:
+All the Changes to one Entry, in order. What "when did I…" is answered from. An
+Entry changed outside the agent has a gap in its History, and an answer says so
+rather than guessing a date.
+_Avoid_: log, audit trail, timeline
+
+**Sighting**:
+A Commitment the agent found and showed the person: where it was found, when it
+was first raised, and what became of it — still open, captured as an Entry, or
+dismissed. The same promise in two sources is two Sightings.
+_Avoid_: detection, match, finding

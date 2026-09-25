@@ -1,6 +1,6 @@
 """Live eval harness: scripted scenarios with real assertions, against a temp vault.
 
-Usage:  python harness.py [read|write|memory|all]
+Usage:  python harness.py [read|write|memory|history|all]
 """
 from __future__ import annotations
 
@@ -25,11 +25,14 @@ for p in (VAULT / "Schedules").glob("*.md"): p.unlink()
 shutil.copytree(SP / "seed", VAULT, dirs_exist_ok=True)
 os.environ["OBSIDIAN_VAULT_PATH"] = str(VAULT)
 os.environ.pop("OBSIDIAN_DAILY_FOLDER", None)
+# History too: an eval run must not leave Sightings in the real store.
+os.environ["OPS_STATE_DIR"] = str(TMP / "state")
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
+import history
 from agent import models
 from agent.graph import build_graph
 from agent.mcp_client import build_client, load_tools
@@ -167,6 +170,22 @@ async def main():
             record("M1 coreference", "09:00" in r2 or "9:00" in r2, f"resolved to 09:00: {'09:00' in r2 or '9:00' in r2}")
         except Exception as e:
             record("M1 coreference", False, f"EXCEPTION {type(e).__name__}: {str(e)[:120]}")
+
+    if STAGE in ("history", "all"):
+        # The one piece of History only the model can write: nothing records a
+        # Sighting unless the model calls record_sighting for what it raises.
+        owed = "What did I commit to this week that isn't on my calendar?"
+        await scenario(graph, "H1 commitments are recorded as sightings", owed, [],
+            lambda r,p,t: ("record_sighting" in t and len(history.open_sightings()) >= 1,
+                           f"called:{'record_sighting' in t} open:{len(history.open_sightings())}"))
+        before = len(history.open_sightings())
+        await scenario(graph, "H2 raising them again does not duplicate", owed, [],
+            lambda r,p,t: ("record_sighting" in t and len(history.open_sightings()) == before,
+                           f"open before:{before} after:{len(history.open_sightings())}"))
+        # With or without a recorded completion (W3 makes one when run first),
+        # the question has to go to History rather than be answered from the vault.
+        await scenario(graph, "H3 when-did-I uses history", "When did I finish today's standup?", [],
+            lambda r,p,t: ("entry_history" in t, f"used {sorted(set(t))}"))
 
     print("\n" + "=" * 72, flush=True)
     passed = sum(1 for _, ok, _ in RESULTS if ok)
