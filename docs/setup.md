@@ -15,7 +15,11 @@ Then edit `.env`:
 - `OBSIDIAN_VAULT_PATH` — start at `./fixtures/vault`, switch to your real vault once
   you trust it.
 - `MODEL_PROVIDER` + the matching API key. `anthropic` for reliable tool calling while
-  you debug the graph; `mistral` for the free tier.
+  you debug the graph; `mistral` for the free tier. An Anthropic key comes from
+  console.anthropic.com and is billed per token on its own account — a Claude Pro
+  or Max subscription does not include API access. A Mistral free-tier key comes
+  from console.mistral.ai. A 401 `Invalid API Key` from either means the key was
+  revoked or expired, not that the config is wrong.
 - `OPS_STATE_DIR` — optional. Where the history store and conversation checkpoints
   live. Defaults to `$XDG_STATE_HOME/ops`, else `~/.local/state/ops`. Keep it out
   of the vault: a sync service would copy a live SQLite file mid-write.

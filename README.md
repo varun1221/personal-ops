@@ -2,278 +2,206 @@
 
 [![CI](https://github.com/varun1221/personal-ops-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/varun1221/personal-ops-agent/actions/workflows/ci.yml)
 
-A LangGraph agent over four hand-written MCP servers, reading an Obsidian vault
-and Gmail — which **cannot write anything without being told yes**, and which
-remembers what it wrote.
+**A personal assistant for your Obsidian notes and your Gmail.** It tells you
+what's on today, what you promised people, and when you actually did things —
+and it never changes a note without asking you first.
 
-![The agent proposes a calendar write; the approval gate refuses it and the vault is unchanged](docs/demo.gif)
+![The assistant proposes adding an event, you say no, and nothing is written](docs/demo.gif)
 
-Most agent demos end at *it called the tool*. This one is about the moment before
-that. Every mutating call pauses the graph, renders exactly what it is about to
-do, and waits. The scene above is the interesting one: the answer is no, and
-nothing was written.
+## What it does
 
-## What that actually takes
+- **Shows your day in one command.** Type `ops` and get what's overdue, what's
+  scheduled, and what's due — without opening Obsidian.
+- **Captures things instantly.** `ops gym at 6pm` adds it to today's plan in
+  under a tenth of a second. No AI involved, no waiting.
+- **Answers questions about your commitments.** `ops ask what do I owe Sarah?`
+  reads your meeting notes, daily notes and email, and finds promises you made in
+  passing that never became a task.
+- **Remembers what happened.** It keeps a history of every change it makes, so
+  you can ask *"when did I send Sarah the deck?"* or see that a task sat open for
+  six days. A promise it has already pointed out comes back as *"first raised 6
+  days ago"*, not as news.
+- **Asks before it changes anything.** Every edit is shown to you exactly as it
+  will be made, and nothing happens until you say yes. Saying no is always safe.
 
-- **The gate is structural, not a prompt.** The read servers contain no write
-  code path at all, and Gmail's readonly scope is enforced by Google. Being
-  careful is not the mechanism.
-- **An approved write happens exactly once.** `interrupt()` raises, and on resume
-  LangGraph replays the node from the top — so anything executed before an
-  interrupt runs twice. Every side effect is ordered after the last interrupt.
-  [`test_approved_write_runs_exactly_once`](tests/test_approval_gate.py) pins it.
-- **Ambiguity refuses rather than guesses.** Two entries called "Sync" in one
-  note, with no start time, produces an error naming both. Deleting the wrong
-  line is not something you can undo from a terminal.
-- **Nobody is asked to approve a no-op.** A gated call that validation would
-  reject anyway is dropped before the prompt ever renders. An approval costs real
-  attention, and a doomed call must not spend it.
-- **Model output is treated as untrusted.** Every path it proposes is resolved
-  against the vault root first, which refuses anything escaping the vault,
-  symlinks included.
-- **It remembers without becoming a second source of truth.** Every write is
-  recorded to SQLite as it happens, so "when did I send Sarah the deck?" has an
-  answer the vault alone cannot give — a checkbox has no timestamp. But whether
-  something is *open* is always read from the vault, never the database, so a
-  task ticked off by hand in Obsidian is reported done on an unknown date rather
-  than contradicted. ([ADR 0004](docs/adr/0004-history-is-recorded-at-write-time.md))
-- **The vault's conventions are read, not assumed.** Obsidian has no single
-  calendar format, so all three are detected from the vault's own config — and
-  writes follow the same detection, because a Full Calendar note in a vault
-  without that plugin is a file nothing will ever render.
-  ([`docs/vault-formats.md`](docs/vault-formats.md))
+## Try it in a minute
 
-| | |
-|---|---|
-| **286 tests, ~10s, no API key** | including the gate driven end to end against the real MCP servers, with a scripted model standing in for the LLM |
-| **21 tools across 4 MCP servers** | 10 read-only, 6 write-gated, and 5 over the history store — hand-authored, each server drivable on its own with the Inspector |
-| **3 vault formats, no configuration** | Full Calendar, Tasks plugin and Day Planner, each detected from the vault's own Obsidian config rather than assumed |
-| **17 live eval scenarios** | run against a real model, because tool *selection* only breaks when a real model is choosing |
-| **0.07s** | the everyday capture path, which never calls a model at all |
-
-## Try it in a minute, without an API key
+No account, API key, or real notes needed — it ships with a sample vault.
 
 ```bash
 git clone https://github.com/varun1221/personal-ops-agent && cd personal-ops-agent
 python3 -m venv .venv && ./.venv/bin/pip install -qe ".[dev]"
 
-# the whole suite, including the approval gate
-./.venv/bin/python -m pytest -q
-
-# the read path, against the synthetic vault in fixtures/
+# see every open task in the sample vault
 OBSIDIAN_VAULT_PATH=./fixtures/vault ./.venv/bin/python ops.py todo
 ```
 
-Nothing above touches a model, a network, or a real vault. To point it at your
-own, see [`docs/setup.md`](docs/setup.md).
-
-## Architecture
-
-```
-  You ──► cli.py
-             │  HumanMessage
-             ▼
-     ┌───────────────┐  tool_calls   ┌──────────────┐
-     │  agent node   │ ────────────► │  tool node   │
-     │  (the model)  │ ◄──────────── │              │
-     └───────────────┘  ToolMessages └──────┬───────┘
-                                            │ gated?
-                                    yes ────┴──── no
-                                     │            │
-                              interrupt()         │
-                                     │            │
-                          You approve/reject      │
-                                     └─────┬──────┘
-                                           ▼
-                              MultiServerMCPClient
-                                           │  stdio
-          ┌──────────────────┬─────────────┴────┬──────────────────┐
-          ▼                  ▼                  ▼                  ▼
-     obsidian            actions             memory              gmail
-   7 tools, READ     6 tools, WRITE      5 tools, HISTORY     3 tools, READ
-          │                  │  records         │  reads
-          │                  └───────┐   ┌──────┘
-          │                          ▼   ▼
-          │                        history/ ──► history.sqlite
-          │                          │  checked against
-          └────────────┬─────────────┘
-                       ▼
-                  vaultlib/
-    paths · tasks · events · dayplanner · agenda
-                       ▼
-              your vault (markdown)
-```
-
-Four layers, each ignorant of the one above it:
-
-- **`cli.py`** renders the approval panel and resumes the graph with
-  `Command(resume=...)`. It holds no knowledge of what any tool does.
-- **`agent/`** is the loop. `graph.py` is a plain `agent → tools → agent` cycle;
-  the gate and the working-set update live in the tool node.
-- **`servers/`** are three independent processes speaking MCP over stdio. They do
-  not know an agent exists — drive any of them with the Inspector and no LangGraph
-  is loaded at all.
-- **`vaultlib/`** is pure parsing: no MCP, no LLM. Shared by the read and write
-  servers so they cannot disagree about what a task line means.
-- **`history/`** is the SQLite store — stdlib `sqlite3`, hand-written schema,
-  migrations by `PRAGMA user_version`, WAL because three processes share it. The
-  actions server and the fast path write Changes to it; the memory server reads
-  them back, checked against the vault by the same code `ops history` uses.
-
-The trust boundary: everything arriving from the model is untrusted. Every path
-goes through `VaultPaths.resolve`, which refuses anything escaping the vault,
-symlinks included.
-
-## Where the decisions are
-
-Four were expensive enough to reverse that they are written up in
-[`docs/adr/`](docs/adr/):
-
-1. [**The gate lives in the graph, not the server**](docs/adr/0001-approval-gate-lives-in-the-graph.md)
-   — an MCP server cannot pause its caller's graph, so the gate cannot live where
-   the write does. The cost: the gate is a property of this client, not of the
-   tools.
-2. [**Approvals are collected before any dispatch**](docs/adr/0002-approvals-are-collected-before-any-dispatch.md)
-   — because `interrupt()` replays the node, moving one dispatch earlier
-   silently reintroduces duplicate writes.
-3. [**The fast path does not ask**](docs/adr/0003-the-fast-path-does-not-ask-for-approval.md)
-   — nothing was inferred there, so there is nothing for a human to review.
-4. [**History is recorded at write time; the vault stays authoritative**](docs/adr/0004-history-is-recorded-at-write-time.md)
-   — exact timestamps instead of scanning the vault, bought at the cost of not
-   seeing edits made in Obsidian. So the database is never asked whether
-   anything is open.
-
-[`CONTEXT.md`](CONTEXT.md) is the glossary: what an *entry* is as against a *task*
-or an *event*, and why an undated task is never *overdue*.
-[`docs/design-notes.md`](docs/design-notes.md) has the rest of the reasoning.
-
-## Using it
+To use it on your own notes, see [`docs/setup.md`](docs/setup.md). To run `ops`
+from any folder, link it onto your path:
 
 ```bash
-ops                        today's plan, overdue first
-ops todo                   every open task in the vault
-ops add gym at 6pm         capture a block    (`add` is implied)
-ops done standup           tick it off
-ops week                   the week
-ops free 90                gaps of at least 90 minutes
-ops rm gym                 remove a block (asks first)
-ops history standup        when it was added, done, moved
-ops ask what do I owe Sarah?    full agent
-ops chat                   interactive session
+ln -s "$PWD/bin/ops" ~/.local/bin/ops
 ```
 
-Bare `ops` is meant to be complete for the day, so that checking it beats opening
-Obsidian: overdue first (three, then a count — debt you cannot see is debt you
-never close), then the day's timed blocks, then anything due today with no time
-on it.
-
-**Most of these never call a model.** `ops add` parses locally and writes straight
-through `vaultlib` — about **0.07s and zero API calls**, against **~5s** for the
-agent path. Only `ask`, and `add` when the parser is not sure, fall back to the
-agent. That gap is the point: capture has to be cheap or it does not happen.
-
-For the conversational agent:
+## Everyday use
 
 ```bash
-./.venv/bin/python cli.py --read-only --no-gmail   # obsidian only, cannot write
-./.venv/bin/python cli.py --no-gmail               # adds the write server
-./.venv/bin/python cli.py                          # everything
+ops                          today: overdue first, then the schedule, then what's due
+ops gym at 6pm               add something to today's plan
+ops done standup             tick it off (and see how long it was open)
+ops history standup          when it was added, done, or moved
+ops todo                     every open task
+ops week                     the week at a glance
+ops free 90                  gaps of at least 90 minutes today
+ops rm gym                   remove something (asks first)
+ops ask what do I owe Sarah? ask the assistant anything
+ops chat                     a back-and-forth conversation
 ```
 
-`--read-only` drops the write server entirely, which is the safe way to point
-this at your real vault the first time.
+Most of these run entirely on your machine and finish instantly. Only `ask` and
+`chat` use an AI model — and `add`, when the wording is too loose for it to be
+sure what you meant.
 
-## Tests
+### Choosing an AI model
+
+`ask` and `chat` need an API key from one of two providers, set in `.env`:
+
+| Provider | Cost | Best for |
+|---|---|---|
+| **Anthropic** (Claude Sonnet 5) | Pay per use. A key from [console.anthropic.com](https://console.anthropic.com) is billed from prepaid credits, separately from any Claude subscription. A typical question costs roughly 5–10 cents. | Reliable results |
+| **Mistral** (Mistral Small) | Free tier from [console.mistral.ai](https://console.mistral.ai) | Trying it out at no cost; less reliable, and rate-limited |
+
+## Safe by design
+
+- **Nothing is written without your yes.** The parts that read your notes and
+  email have no ability to write at all. Only one component can change your
+  vault, and every one of its actions pauses for your approval.
+- **Your notes stay the source of truth.** The history database records *when*
+  things happened. Whether something is still open is always read from your notes
+  as they are now — so if you tick something off in Obsidian yourself, the
+  assistant sees it.
+- **It refuses rather than guesses.** If "Sync" could mean two different
+  entries, it tells you both and asks you to be specific instead of picking one.
+- **Email is read-only.** Gmail access uses Google's read-only permission, so the
+  assistant cannot send, delete or change mail even if asked.
+- **It can't reach outside your vault.** Every file path the AI suggests is
+  checked first, and anything pointing outside your vault is refused.
+- **Start in read-only mode.** `./.venv/bin/python cli.py --read-only` turns off
+  editing entirely — the safe way to point it at your real notes the first time.
+
+**Where your data goes:** your notes and history stay on your computer. When you
+use `ask` or `chat`, the notes and emails relevant to your question are sent to
+the AI provider you chose, to answer it. The everyday commands send nothing
+anywhere — the one exception is `ops add` with wording it can't parse, which hands
+the request to the assistant (and says so).
+
+## How it works
+
+```
+  you ──► ops / chat
+              │
+              ▼
+        the assistant  ──── asks you before any change
+              │
+   ┌──────────┼───────────┬────────────┐
+   ▼          ▼           ▼            ▼
+ notes      editor      history      email
+(read)   (only writer) (database)    (read)
+   │          │           │
+   └──────────┴─────┬─────┘
+                    ▼
+          your Obsidian vault
+```
+
+The assistant is built from four small, independent services, each with one job:
+reading notes, editing notes, keeping history, and reading email. Keeping the
+editor separate is what makes "nothing changes without your yes" a guarantee
+rather than a promise — the reading services have no way to write.
+
+**History is a small SQLite database** in `~/.local/state/ops/` (configurable),
+outside your vault so a sync service never copies it mid-write. It stores three things:
+
+- **Changes** — every task or event created, completed, reopened, renamed,
+  moved or deleted, with when and how.
+- **Sightings** — each promise the assistant has pointed out to you, where it
+  found it, and whether you turned it into a task or dismissed it.
+- **Approvals** — each edit you said yes or no to, so it doesn't propose the
+  same rejected change twice.
+
+It works with all three ways people keep calendars in Obsidian — the Full
+Calendar, Tasks and Day Planner plugins — detecting which one your vault uses
+from its own settings. See [`docs/vault-formats.md`](docs/vault-formats.md).
+
+### Built with
+
+| | |
+|---|---|
+| **Language** | Python 3.12 |
+| **Agent** | [LangGraph](https://langchain-ai.github.io/langgraph/), with human approval built into the loop |
+| **Services** | 4 [MCP](https://modelcontextprotocol.io) servers, 21 tools, written by hand |
+| **Database** | SQLite (Python's built-in `sqlite3`), versioned schema migrations |
+| **Models** | Anthropic Claude or Mistral, switchable with one setting |
+| **Integrations** | Obsidian (plain markdown files), Gmail API (read-only) |
+| **Quality** | 286 automated tests, 17 live AI evaluation scenarios, GitHub Actions CI |
+
+## Quality
 
 ```bash
 ./.venv/bin/python -m pytest
 ```
 
-**286 tests, about 10 seconds, no API key and no `.env`** — every test points
-itself at `fixtures/`, and at its own throwaway history store. CI runs exactly this, plus `ruff check`.
+**286 tests run in about 10 seconds with no API key and no network.** They
+include the full approval flow driven end to end, with a scripted stand-in for
+the AI, and every one runs against sample data — never your real notes or
+history. CI runs them on every push, along with the `ruff` linter.
 
-`pytest` verifies the code; [`evals/`](evals/README.md) verifies the *agent* — the
-part that only breaks when a real model chooses the tool calls. That README lists
-six bugs the live evals caught which the unit suite could not, every one of them
-about phrasing or formatting rather than logic.
+Tests check the code; [live evaluations](evals/README.md) check the *assistant*,
+by running real questions against a real model. They catch the problems only a
+real model causes — the README there lists six that unit tests could not.
 
 ## Known limitations
 
-**`move_event` is Day Planner only.** On a Full Calendar vault it refuses and tells
-you to delete and recreate. `delete_event` works on both.
+- **Hand edits leave gaps in history.** Only changes made through `ops` or the
+  assistant are recorded. A task ticked off in Obsidian shows as done on an
+  unknown date; one renamed there starts a fresh history.
+- **Promise tracking depends on the AI.** Spotting a promise in ordinary prose is
+  the model's job, so one it forgets to record will look new next time. The same
+  promise in an email and a note is tracked twice.
+- **Vague dates are unreliable.** "By Friday next week" in a note is interpreted
+  inconsistently. Explicit dates are read correctly.
+- **Moving events needs Day Planner.** With Full Calendar it can delete and
+  recreate, but not move.
+- **Due dates can't be changed.** Tasks can be ticked, reopened and renamed, but
+  a new due date means editing the line yourself.
+- **All-day events don't exist in Day Planner**, so the assistant asks for a time
+  rather than inventing one.
+- **Identical tasks can't be told apart from the terminal.** If "Call mum" is
+  open in two notes, `ops done call mum` refuses and you rename one.
+- **The free model is flakier.** On Mistral's free tier the assistant sometimes
+  proposes a change it already made; a duplicate check stops it being written
+  twice.
 
-**Nothing reschedules a plain task.** `complete_task` and `rename_entry` edit a task
-line in place, but changing a Tasks-plugin due date means rewriting the line by hand.
-
-**Day Planner has no all-day concept.** Every entry is a time block, so an all-day
-event cannot be represented. `create_calendar_event` refuses one with a message
-telling the model to supply a `start_time`, rather than inventing a time.
-
-**`search_notes` is substring matching, not a query language.** The only operator is
-` OR `. This is stated bluntly in the tool docstring because a live run had the model
-send `"I said I'd OR I'll OR I promised"` as one literal string, match nothing, and
-report that the user had no commitments. An empty result now says explicitly that it
-is inconclusive, so the model retries instead of concluding.
-
-**Relative dates in prose are the model's weak spot.** A note reading "by Friday next
-week" gets resolved inconsistently between runs. Notes with explicit dates are read
-correctly; ambiguous prose is a coin flip, and no amount of prompting fixes it.
-
-**Tools take whatever wording the model gives them.** `complete_task`,
-`rename_entry`, `move_event` and `delete_event` match in both directions, so
-`"Standup"`, `"09:00 - 09:15 Standup"`, the whole raw line, and a decorated form
-like `"- [ ] Standup — 2026-08-18 09:00"` all resolve to the same entry. This is
-not politeness: because these are gated, every unmatched phrasing costs the user
-another approval prompt. Ambiguity still refuses, so looser matching never becomes
-guessing. The same normalisation applies to `rename_entry`'s *replacement* text —
-without it, a model echoing the whole line back produces
-`- [ ] 10:00 - 12:00 - [ ] 10:00 - 12:00 Title`.
-
-**`ops done` can refuse with no way to narrow it.** It searches the whole vault
-so the day view's tasks can be ticked off where they actually live, and refuses
-when two *open* tasks match. If the same description is open in two notes there
-is no way to disambiguate from the terminal — you have to go and rename one. The
-alternative was picking one silently, which is the coin flip `move_event` already
-refuses to make.
-
-**History has gaps where you edited by hand.** Only writes made through `ops` or
-the agent are recorded. A task ticked off in Obsidian shows as done with an
-unknown date, and a task renamed there starts a new History under its new
-wording. This is the cost ADR 0004 accepts in exchange for exact timestamps.
-
-**A Sighting is only as reliable as the model's tool call.** Recognising a
-promise in prose is the model's job, so a commitment it raises without calling
-`record_sighting` is presented as new next time. The `history` live eval checks
-for exactly this. The same promise in an email *and* a meeting note is two
-Sightings; capturing one does not close the other.
-
-**Free-tier tool calling is the flaky part, not the graph.** On `mistral-small-latest`
-the model occasionally re-proposes a write that already succeeded and drifts from
-prompt instructions ("don't ask 'shall I' in prose"). Both are mitigated but not
-eliminated. The `already exists` guard in the actions server is what turns a repeated
-write into a harmless error instead of duplicate data — keep it.
-
-## Layout
+## For developers
 
 ```
-servers/obsidian/   READ-ONLY   7 tools: search, read, events, tasks, free slots
-servers/gmail/      READ-ONLY   gmail.readonly scope
-servers/actions/    WRITE       the only server that changes the vault; every tool is gated
-servers/memory/     HISTORY     when things happened, commitments raised, past rejections
-agent/              the LangGraph loop, model factory, working-set memory
-vaultlib/           vault parsing and selection, shared by servers and CLI
-history/            the SQLite history store, and answers checked against the vault
-ops.py              fast one-shot CLI; bypasses the model where it can
-cli.py              REPL; renders approval prompts and resumes the graph
-fixtures/           two synthetic vaults; tests never touch the real one
+ops.py              the everyday commands; skips the AI wherever it can
+cli.py              the chat interface; shows approval prompts
+agent/              the LangGraph loop, prompts and model setup
+servers/obsidian/   reads notes, events and tasks
+servers/actions/    the only service that edits the vault; every tool needs approval
+servers/memory/     reads and records history, promises and past refusals
+servers/gmail/      reads email (read-only)
+history/            the SQLite database and its answers, checked against the vault
+vaultlib/           parses the vault; shared so nothing disagrees on what a task is
+fixtures/           sample vaults used by the tests
 evals/              live scenarios run against a real model
 ```
 
 | | |
 |---|---|
-| [`CONTEXT.md`](CONTEXT.md) | the glossary |
-| [`docs/adr/`](docs/adr/) | the four expensive decisions |
+| [`docs/setup.md`](docs/setup.md) | using your own vault, API keys, and Gmail |
+| [`docs/adr/`](docs/adr/) | the four decisions that were expensive to reverse, and why |
+| [`CONTEXT.md`](CONTEXT.md) | the glossary: exact meanings of task, event, change, sighting |
 | [`docs/design-notes.md`](docs/design-notes.md) | the rest of the reasoning |
-| [`docs/setup.md`](docs/setup.md) | pointing it at a real vault, and Gmail OAuth |
-| [`docs/vault-formats.md`](docs/vault-formats.md) | Full Calendar, Tasks, Day Planner |
-| [`evals/README.md`](evals/README.md) | what the live evals caught |
+| [`docs/vault-formats.md`](docs/vault-formats.md) | the three Obsidian calendar formats |
+| [`evals/README.md`](evals/README.md) | what the live evaluations caught |
