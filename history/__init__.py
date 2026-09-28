@@ -77,13 +77,40 @@ MIGRATIONS = [
 ]
 
 
+class StateDirError(OSError):
+    """The state directory is inside the vault.
+
+    An OSError, so the recorders' "never raises" still holds: a refused store is
+    a gap in History with the reason on stderr, not a failed vault write.
+    """
+
+
 def state_dir() -> Path:
     """Where ops keeps its databases. Never inside the vault, which syncs."""
     if explicit := os.environ.get("OPS_STATE_DIR"):
-        return Path(explicit)
-    if xdg := os.environ.get("XDG_STATE_HOME"):
-        return Path(xdg) / "ops"
-    return Path.home() / ".local" / "state" / "ops"
+        directory = Path(explicit)
+    elif xdg := os.environ.get("XDG_STATE_HOME"):
+        directory = Path(xdg) / "ops"
+    else:
+        directory = Path.home() / ".local" / "state" / "ops"
+    _refuse_inside_vault(directory)
+    return directory
+
+
+def _refuse_inside_vault(directory: Path) -> None:
+    # Obsidian Sync, iCloud or Dropbox would copy a live SQLite file mid-write.
+    # A vault inside the state directory is odd but harmless, so only one way round.
+    raw = os.environ.get("OBSIDIAN_VAULT_PATH")
+    if not raw:
+        return
+    vault = Path(raw).expanduser().resolve()
+    resolved = directory.expanduser().resolve()
+    if resolved.is_relative_to(vault):
+        raise StateDirError(
+            f"the state directory {resolved} is inside the vault {vault}. A sync "
+            "service would copy its databases mid-write. Set OPS_STATE_DIR to a "
+            "folder outside the vault, or unset it to use ~/.local/state/ops."
+        )
 
 
 def _connect() -> sqlite3.Connection:

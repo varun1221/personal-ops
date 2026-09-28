@@ -21,8 +21,9 @@ Then edit `.env`:
   from console.mistral.ai. A 401 `Invalid API Key` from either means the key was
   revoked or expired, not that the config is wrong.
 - `OPS_STATE_DIR` — optional. Where the history store and conversation checkpoints
-  live. Defaults to `$XDG_STATE_HOME/ops`, else `~/.local/state/ops`. Keep it out
-  of the vault: a sync service would copy a live SQLite file mid-write.
+  live. Defaults to `$XDG_STATE_HOME/ops`, else `~/.local/state/ops`. It must be
+  outside the vault, since a sync service would copy a live SQLite file mid-write;
+  a state directory inside the vault is refused.
 
 ## Gmail
 

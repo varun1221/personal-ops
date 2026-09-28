@@ -22,6 +22,47 @@ def test_state_dir_prefers_ops_state_dir(tmp_path, monkeypatch):
     assert history.state_dir() == tmp_path / "explicit"
 
 
+def test_a_state_dir_inside_the_vault_is_refused(tmp_path, monkeypatch):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(vault))
+    monkeypatch.setenv("OPS_STATE_DIR", str(vault / ".ops"))
+
+    with pytest.raises(history.StateDirError) as refused:
+        history.state_dir()
+    assert str(vault.resolve()) in str(refused.value)
+    assert str((vault / ".ops").resolve()) in str(refused.value)
+
+
+def test_a_state_dir_reached_through_a_symlink_is_still_refused(tmp_path, monkeypatch):
+    vault = tmp_path / "vault"
+    (vault / ".ops").mkdir(parents=True)
+    (tmp_path / "link").symlink_to(vault / ".ops")
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(vault))
+    monkeypatch.setenv("OPS_STATE_DIR", str(tmp_path / "link"))
+
+    with pytest.raises(history.StateDirError):
+        history.state_dir()
+
+
+def test_a_vault_inside_the_state_dir_is_allowed(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPS_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path / "state" / "vault"))
+
+    assert history.state_dir() == tmp_path / "state"
+
+
+def test_a_refused_store_is_a_gap_not_a_failed_write(tmp_path, monkeypatch, capsys):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(vault))
+    monkeypatch.setenv("OPS_STATE_DIR", str(vault / ".ops"))
+
+    history.record_change("created", "Inbox.md", "Gym", via="fast_path")
+    assert "inside the vault" in capsys.readouterr().err
+    assert not (vault / ".ops").exists()
+
+
 def test_state_dir_falls_back_to_xdg(tmp_path, monkeypatch):
     monkeypatch.delenv("OPS_STATE_DIR", raising=False)
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg"))

@@ -16,7 +16,7 @@ says why and where to put it instead.
 
 ## Done when
 
-- [ ] `OPS_STATE_DIR` inside the vault fails loudly, naming both paths.
-- [ ] A vault *inside* the state directory (odd, but harmless) is still allowed.
-- [ ] Recording still never raises into a vault write (ADR 0004): a refused
+- [x] `OPS_STATE_DIR` inside the vault fails loudly, naming both paths.
+- [x] A vault *inside* the state directory (odd, but harmless) is still allowed.
+- [x] Recording still never raises into a vault write (ADR 0004): a refused
       store is a gap in History with the reason on stderr, not a failed write.
