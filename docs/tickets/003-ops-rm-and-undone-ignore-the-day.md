@@ -24,8 +24,8 @@ both commands; `resolve_day` already understands the words.
 
 ## Done when
 
-- [ ] `ops rm gym tomorrow` removes tomorrow's gym block (after the usual y/N).
-- [ ] `ops undone standup yesterday` reopens yesterday's standup.
-- [ ] A title that genuinely ends in a day word still works when quoted or given
+- [x] `ops rm gym tomorrow` removes tomorrow's gym block (after the usual y/N).
+- [x] `ops undone standup yesterday` reopens yesterday's standup.
+- [x] A title that genuinely ends in a day word still works when quoted or given
       without one — decide and test which wins; ambiguity should refuse, not guess.
-- [ ] Tests through `ops.main`, alongside `tests/test_ops_history.py`.
+- [x] Tests through `ops.main`, alongside `tests/test_ops_history.py`.

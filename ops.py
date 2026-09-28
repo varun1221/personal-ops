@@ -81,6 +81,28 @@ def resolve_day(word: str | None) -> date:
         return date.today()
 
 
+def split_day(words: list[str]) -> tuple[str, str | None]:
+    """Split a trailing day off `rm` and `undone` arguments.
+
+    Only a day given as its own argument counts: `ops rm gym tomorrow` means
+    tomorrow's gym, while `ops rm "prep for tomorrow"` arrives as one argument
+    and stays a title. Quoting is how a title ending in a day word says so.
+    """
+    if len(words) > 1 and _is_day_word(words[-1]):
+        return " ".join(words[:-1]).strip(), words[-1]
+    return " ".join(words).strip(), None
+
+
+def _is_day_word(word: str) -> bool:
+    if word.lower() in RELATIVE_DAYS:
+        return True
+    try:
+        date.fromisoformat(word)
+    except ValueError:
+        return False
+    return True
+
+
 def entries_for(paths: VaultPaths, day: date) -> list:
     note = paths.daily_dir / f"{day.isoformat()}.md"
     if not note.exists():
@@ -450,9 +472,11 @@ def main(argv: list[str]) -> int:
     if command == "done":
         return cmd_done(text) if text else die("mark what as done?")
     if command == "undone":
-        return cmd_done(text, done=False) if text else die("reopen what?")
+        what, day_word = split_day(rest)
+        return cmd_done(what, day_word, done=False) if what else die("reopen what?")
     if command == "rm":
-        return cmd_rm(text) if text else die("remove what?")
+        what, day_word = split_day(rest)
+        return cmd_rm(what, day_word) if what else die("remove what?")
     if command == "free":
         minutes = int(rest[0]) if rest and rest[0].isdigit() else 30
         return cmd_free(minutes, rest[1] if len(rest) > 1 else None)
