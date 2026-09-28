@@ -161,3 +161,46 @@ def test_past_rejections_lists_the_noes_newest_first():
     ]
     assert rejections[1].args == {"note_path": "a.md"}
     assert history.past_rejections(tool="add_task") == []
+
+
+def test_an_answer_recorded_twice_is_kept_once():
+    # A crash after recording and before the node finishes re-runs the node.
+    for _ in range(2):
+        history.record_approval(
+            "delete_event", {"note_path": "a.md"}, "Delete “Gym”", approved=False,
+            reason=None, thread_id="t1", tool_call_id="call_1", at=MON,
+        )
+
+    assert len(history.past_rejections()) == 1
+
+
+def test_the_same_call_id_in_another_thread_is_a_different_answer():
+    for thread in ("t1", "t2"):
+        history.record_approval(
+            "delete_event", {"note_path": "a.md"}, "Delete “Gym”", approved=False,
+            reason=None, thread_id=thread, tool_call_id="call_1", at=MON,
+        )
+
+    assert len(history.past_rejections()) == 2
+
+
+def test_migration_2_upgrades_a_version_1_database(state_dir):
+    import sqlite3
+
+    state_dir.mkdir(parents=True)
+    conn = sqlite3.connect(state_dir / history.DB_NAME)
+    conn.executescript(f"BEGIN; {history.MIGRATIONS[0]} PRAGMA user_version = 1; COMMIT;")
+    conn.execute(
+        "INSERT INTO approvals (at, tool, args, description, approved, reason, thread_id) "
+        "VALUES (?, 'delete_event', '{}', 'Delete “Gym”', 0, NULL, 't1')",
+        (MON.isoformat(),),
+    )
+    conn.commit()
+    conn.close()
+
+    assert [r.description for r in history.past_rejections()] == ["Delete “Gym”"]
+    history.record_approval(
+        "delete_event", {}, "Delete “Run”", approved=False,
+        reason=None, thread_id="t1", tool_call_id="call_1", at=SAT,
+    )
+    assert len(history.past_rejections()) == 2

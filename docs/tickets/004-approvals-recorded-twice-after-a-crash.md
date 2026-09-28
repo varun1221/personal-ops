@@ -19,6 +19,6 @@ migration 1), and insert with `ON CONFLICT DO NOTHING`.
 
 ## Done when
 
-- [ ] Recording the same `(thread_id, tool_call_id)` twice leaves one row.
-- [ ] Migration 2 applies cleanly to a database created by migration 1.
-- [ ] A test through the `history` API shows it; no test needs to kill a process.
+- [x] Recording the same `(thread_id, tool_call_id)` twice leaves one row.
+- [x] Migration 2 applies cleanly to a database created by migration 1.
+- [x] A test through the `history` API shows it; no test needs to kill a process.

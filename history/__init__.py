@@ -68,6 +68,12 @@ MIGRATIONS = [
         thread_id   TEXT
     );
     """,
+    # An Approval answers one tool call. Keyed on it, so a node re-run after a
+    # crash between recording and finishing cannot record the answer twice.
+    """
+    ALTER TABLE approvals ADD COLUMN tool_call_id TEXT;
+    CREATE UNIQUE INDEX approvals_once ON approvals (thread_id, tool_call_id);
+    """,
 ]
 
 
@@ -323,16 +329,22 @@ def record_approval(
     approved: bool,
     reason: str | None,
     thread_id: str | None,
+    tool_call_id: str | None = None,
     at: datetime | None = None,
 ) -> None:
-    """Record one answered Approval. Never raises, for the same reason as record_change."""
+    """Record one answered Approval. Never raises, for the same reason as record_change.
+
+    Recording the same `(thread_id, tool_call_id)` again is a no-op.
+    """
     at = at or datetime.now()
     try:
         with closing(_connect()) as conn, conn:
             conn.execute(
                 """
-                INSERT INTO approvals (at, tool, args, description, approved, reason, thread_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO approvals
+                    (at, tool, args, description, approved, reason, thread_id, tool_call_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT DO NOTHING
                 """,
                 (
                     at.isoformat(),
@@ -342,6 +354,7 @@ def record_approval(
                     int(approved),
                     reason,
                     thread_id,
+                    tool_call_id,
                 ),
             )
     except (sqlite3.Error, OSError) as exc:

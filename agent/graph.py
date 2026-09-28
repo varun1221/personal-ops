@@ -151,6 +151,7 @@ def build_graph(tools: list[BaseTool], model, checkpointer):
                     approved=decision["approved"],
                     reason=decision.get("reason"),
                     thread_id=thread_id,
+                    tool_call_id=call["id"],
                 )
 
         messages: list[ToolMessage] = []
