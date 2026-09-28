@@ -31,6 +31,7 @@ from rich.console import Console
 from rich.markup import escape
 
 import history
+from history import ChangeKind, WritePath
 from history.answers import describe
 from vaultlib.agenda import (
     Agenda,
@@ -66,8 +67,8 @@ def vault() -> VaultPaths:
     return VaultPaths.from_env()
 
 
-def record(kind: str, note_path: str, description: str) -> None:
-    history.record_change(kind, note_path, description, via="fast_path")
+def record(kind: ChangeKind, note_path: str, description: str) -> None:
+    history.record_change(kind, note_path, description, via=WritePath.FAST_PATH)
 
 
 def resolve_day(word: str | None) -> date:
@@ -205,7 +206,7 @@ def cmd_add(text: str) -> int:
     )
     if "error" in result:
         return die(result["error"])
-    record("created", result["note_path"], capture.title)
+    record(ChangeKind.CREATED, result["note_path"], capture.title)
 
     console.print(
         f"[green]added[/green]  [cyan]{capture.start_time}–{capture.end_time}[/cyan]  "
@@ -251,7 +252,7 @@ def cmd_done(text: str, day_word: str | None = None, done: bool = True) -> int:
     note_path = paths.relative(target)
     config = PlannerConfig.from_vault(paths.root)
     description = _strip_decoration(task.description, config.default_duration_minutes)
-    record("completed" if done else "reopened", note_path, description)
+    record(ChangeKind.COMPLETED if done else ChangeKind.REOPENED, note_path, description)
 
     verb = "done" if done else "reopened"
     console.print(f"[green]{verb}[/green]  {escape(after.strip())}")
@@ -344,7 +345,7 @@ def cmd_rm(text: str, day_word: str | None = None) -> int:
         return 0
 
     removed = _delete_planner_line(target, entry)
-    record("deleted", paths.relative(target), entry.description)
+    record(ChangeKind.DELETED, paths.relative(target), entry.description)
     console.print(f"[green]removed[/green]  {escape(removed.strip())}")
     return 0
 

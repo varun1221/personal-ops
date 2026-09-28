@@ -33,6 +33,7 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
 import history
+from history import ChangeKind, WritePath
 from vaultlib.dayplanner import (
     PlannerConfig,
     add_minutes,
@@ -71,9 +72,9 @@ def vault() -> VaultPaths:
     return VaultPaths.from_env()
 
 
-def record(kind: str, note_path: str, description: str, **follow) -> None:
+def record(kind: ChangeKind, note_path: str, description: str, **follow) -> None:
     """Every write here was approved: that is the only way these tools run."""
-    history.record_change(kind, note_path, description, via="approved", **follow)
+    history.record_change(kind, note_path, description, via=WritePath.APPROVED, **follow)
 
 
 def wording(paths: VaultPaths, text: str) -> str:
@@ -124,7 +125,7 @@ def create_calendar_event(
     if calendar_format(paths) == "day_planner":
         written = _write_planner_event(paths, title, date, start_time, end_time)
         if "error" not in written:
-            record("created", written["note_path"], title)
+            record(ChangeKind.CREATED, written["note_path"], title)
         return json.dumps(written, indent=2)
 
     events_dir = paths.events_dir
@@ -146,7 +147,7 @@ def create_calendar_event(
     except (OSError, ValueError) as exc:
         return json.dumps({"error": f"Could not write the event: {exc}"})
 
-    record("created", paths.relative(target), title)
+    record(ChangeKind.CREATED, paths.relative(target), title)
     return json.dumps(
         {
             "created": True,
@@ -199,7 +200,7 @@ def delete_event(
             removed = _delete_planner_line(target, entry)
         except OSError as exc:
             return json.dumps({"error": f"Could not update the note: {exc}"})
-        record("deleted", paths.relative(target), entry.description)
+        record(ChangeKind.DELETED, paths.relative(target), entry.description)
         return json.dumps(
             {
                 "deleted": True,
@@ -232,7 +233,7 @@ def delete_event(
     except OSError as exc:
         return json.dumps({"error": f"Could not delete the note: {exc}"})
 
-    record("deleted", paths.relative(target), event.title)
+    record(ChangeKind.DELETED, paths.relative(target), event.title)
     return json.dumps(
         {
             "deleted": True,
@@ -325,7 +326,7 @@ def move_event(
         )
 
     record(
-        "moved", paths.relative(source_note), entry.description,
+        ChangeKind.MOVED, paths.relative(source_note), entry.description,
         new_note_path=written["note_path"],
     )
     return json.dumps(
@@ -402,7 +403,7 @@ def complete_task(
         return json.dumps({"error": f"Could not update the note: {exc}"})
 
     record(
-        "completed" if done else "reopened",
+        ChangeKind.COMPLETED if done else ChangeKind.REOPENED,
         paths.relative(target),
         wording(paths, task.description),
     )
@@ -480,7 +481,7 @@ def rename_entry(
         return json.dumps({"error": f"Could not update the note: {exc}"})
 
     record(
-        "renamed",
+        ChangeKind.RENAMED,
         paths.relative(target),
         wording(paths, task.description),
         new_description=new_text.strip(),
@@ -545,7 +546,7 @@ def add_task(
     # the task later will find it by what is left.
     written = parse_task_line(line)
     record(
-        "created",
+        ChangeKind.CREATED,
         paths.relative(target),
         wording(paths, written.description if written else text),
     )

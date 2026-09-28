@@ -72,7 +72,7 @@ def _sighting(sighting: history.Sighting) -> dict:
         "first_raised": stamp(sighting.first_raised),
         "days_since_first_raised": (datetime.now() - sighting.first_raised).days,
         **(
-            {"entry": {"note_path": sighting.entry[0], "description": sighting.entry[1]}}
+            {"entry": {"note_path": sighting.entry.note_path, "description": sighting.entry.description}}
             if sighting.entry
             else {}
         ),

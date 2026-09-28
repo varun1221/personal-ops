@@ -18,7 +18,9 @@ import sys
 from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
+from typing import NamedTuple
 
 from vaultlib.tasks import _normalize
 
@@ -134,11 +136,36 @@ def entry_key(description: str) -> str:
 # --- Changes ----------------------------------------------------------------
 
 
+class ChangeKind(StrEnum):
+    """What happened to an Entry. The values are what the database stores."""
+
+    CREATED = "created"
+    COMPLETED = "completed"
+    REOPENED = "reopened"
+    RENAMED = "renamed"
+    MOVED = "moved"
+    DELETED = "deleted"
+
+
+class WritePath(StrEnum):
+    """How a Change reached the vault."""
+
+    FAST_PATH = "fast_path"
+    APPROVED = "approved"
+
+
+class EntryRef(NamedTuple):
+    """Where an Entry lives and how it is worded: together, how History finds it."""
+
+    note_path: str
+    description: str
+
+
 @dataclass
 class Change:
-    kind: str
+    kind: ChangeKind
     at: datetime
-    via: str
+    via: WritePath
 
 
 @dataclass
@@ -149,11 +176,11 @@ class EntryHistory:
 
 
 def record_change(
-    kind: str,
+    kind: ChangeKind,
     note_path: str,
     description: str,
     *,
-    via: str,
+    via: WritePath,
     at: datetime | None = None,
     new_note_path: str | None = None,
     new_description: str | None = None,
@@ -169,6 +196,8 @@ def record_change(
     """
     at = at or datetime.now()
     try:
+        # A typo is a gap in History reported on stderr, like any other failure.
+        kind, via = ChangeKind(kind), WritePath(via)
         with closing(_connect()) as conn, conn:
             entry_id = _entry_id(conn, note_path, description)
             conn.execute(
@@ -177,7 +206,7 @@ def record_change(
             )
             if new_note_path or new_description:
                 _rekey(conn, entry_id, new_note_path or note_path, new_description or description)
-    except (sqlite3.Error, OSError) as exc:
+    except (sqlite3.Error, OSError, ValueError) as exc:
         print(f"history: could not record {kind} of {description!r}: {exc}", file=sys.stderr)
 
 
@@ -236,7 +265,10 @@ def _with_changes(conn: sqlite3.Connection, entry: sqlite3.Row) -> EntryHistory:
     return EntryHistory(
         note_path=entry["note_path"],
         description=entry["description"],
-        changes=[Change(c["kind"], datetime.fromisoformat(c["at"]), c["via"]) for c in changes],
+        changes=[
+            Change(ChangeKind(c["kind"]), datetime.fromisoformat(c["at"]), WritePath(c["via"]))
+            for c in changes
+        ],
     )
 
 
@@ -246,7 +278,14 @@ def _escape_like(text: str) -> str:
 
 # --- Sightings --------------------------------------------------------------
 
-OUTCOMES = ("captured", "dismissed")
+class SightingStatus(StrEnum):
+    OPEN = "open"
+    CAPTURED = "captured"
+    DISMISSED = "dismissed"
+
+
+# How a Sighting can be closed.
+OUTCOMES = (SightingStatus.CAPTURED, SightingStatus.DISMISSED)
 
 
 @dataclass
@@ -256,8 +295,8 @@ class Sighting:
     quote: str
     first_raised: datetime
     last_raised: datetime
-    status: str
-    entry: tuple[str, str] | None = None
+    status: SightingStatus
+    entry: EntryRef | None = None
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> Sighting:
@@ -267,9 +306,9 @@ class Sighting:
             quote=row["quote"],
             first_raised=datetime.fromisoformat(row["first_raised"]),
             last_raised=datetime.fromisoformat(row["last_raised"]),
-            status=row["status"],
+            status=SightingStatus(row["status"]),
             entry=(
-                (row["entry_note_path"], row["entry_description"])
+                EntryRef(row["entry_note_path"], row["entry_description"])
                 if row["entry_note_path"]
                 else None
             ),
@@ -303,14 +342,15 @@ def open_sightings() -> list[Sighting]:
     """Commitments raised and not yet captured or dismissed, oldest first."""
     with closing(_connect()) as conn:
         rows = conn.execute(
-            "SELECT * FROM sightings WHERE status = 'open' ORDER BY first_raised, id"
+            "SELECT * FROM sightings WHERE status = ? ORDER BY first_raised, id",
+            (SightingStatus.OPEN,),
         ).fetchall()
         return [Sighting.from_row(row) for row in rows]
 
 
 def resolve_sighting(
     sighting_id: int,
-    outcome: str,
+    outcome: SightingStatus,
     *,
     note_path: str | None = None,
     description: str | None = None,

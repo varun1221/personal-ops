@@ -55,12 +55,12 @@ def vault_state(paths: VaultPaths, note_path: str, description: str) -> tuple[st
 def describe(paths: VaultPaths, entry: history.EntryHistory) -> dict:
     status, lines = vault_state(paths, entry.note_path, entry.description)
 
-    created_at = next((c.at for c in entry.changes if c.kind == "created"), None)
+    created_at = next((c.at for c in entry.changes if c.kind == history.ChangeKind.CREATED), None)
     completed_at = None
     for change in entry.changes:
-        if change.kind == "completed":
+        if change.kind == history.ChangeKind.COMPLETED:
             completed_at = change.at
-        elif change.kind == "reopened":
+        elif change.kind == history.ChangeKind.REOPENED:
             completed_at = None
     # The vault outranks the record: a completion it no longer shows was undone
     # somewhere History did not see.

@@ -17,6 +17,6 @@ together through every History function, and appears as a bare tuple in
 
 ## Done when
 
-- [ ] No call site passes a raw kind or path string.
-- [ ] Existing databases read back unchanged (the enums' values are the stored strings).
-- [ ] Behaviour identical — the existing seams' tests pass untouched.
+- [x] No call site passes a raw kind or path string.
+- [x] Existing databases read back unchanged (the enums' values are the stored strings).
+- [x] Behaviour identical — the existing seams' tests pass untouched.
