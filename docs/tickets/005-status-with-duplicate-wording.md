@@ -16,6 +16,6 @@ project refuses rather than guesses.
 
 ## Done when
 
-- [ ] Two same-wording lines with different states produce "ambiguous", not a guess.
-- [ ] `ops history` and `entry_history` both say so in plain language.
-- [ ] Test in `tests/test_memory_server.py`.
+- [x] Two same-wording lines with different states produce "ambiguous", not a guess.
+- [x] `ops history` and `entry_history` both say so in plain language.
+- [x] Test in `tests/test_memory_server.py`.

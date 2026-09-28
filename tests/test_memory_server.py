@@ -134,3 +134,23 @@ def test_past_rejections_are_listed(memory, dp_vault):
     [rejection] = json.loads(memory.past_rejections())["rejections"]
     assert rejection["description"] == "Delete “Standup”"
     assert rejection["reason"] == "keep it"
+
+
+def test_the_same_wording_twice_in_different_states_is_ambiguous(memory, dp_vault):
+    note = dp_vault / DAILY
+    note.write_text(note.read_text() + "- [x] Call mum\n- [ ] Call mum\n")
+    history.record_change("created", DAILY, "Call mum", via="fast_path", at=SIX_DAYS_AGO)
+
+    [entry] = _history(memory, "call mum")["entries"]
+    assert entry["status"] == "ambiguous"
+    assert entry["lines"] == [12, 13]
+    assert "more than once" in entry["summary"]
+
+
+def test_the_same_wording_twice_in_one_state_is_not_ambiguous(memory, dp_vault):
+    note = dp_vault / DAILY
+    note.write_text(note.read_text() + "- [ ] Call mum\n- [ ] Call mum\n")
+    history.record_change("created", DAILY, "Call mum", via="fast_path", at=SIX_DAYS_AGO)
+
+    [entry] = _history(memory, "call mum")["entries"]
+    assert entry["status"] == "open"

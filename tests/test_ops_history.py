@@ -96,3 +96,12 @@ def test_removing_is_recorded(dp_vault, screen, monkeypatch):
 def test_history_of_something_never_recorded_is_inconclusive(dp_vault, screen):
     assert ops.main(["history", "send sarah"]) == 0
     assert "no history" in screen.getvalue().lower()
+
+
+def test_history_says_when_the_note_is_ambiguous(dp_vault, screen):
+    note = dp_vault / DAILY
+    note.write_text(note.read_text() + "- [x] Call mum\n- [ ] Call mum\n")
+    history.record_change("created", DAILY, "Call mum", via="fast_path")
+
+    assert ops.main(["history", "call mum"]) == 0
+    assert "more than once" in screen.getvalue()

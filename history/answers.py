@@ -19,31 +19,41 @@ def stamp(moment: datetime | None) -> str | None:
     return moment.isoformat(timespec="minutes") if moment else None
 
 
-def vault_state(paths: VaultPaths, note_path: str, description: str) -> str:
-    """What the vault says about an Entry right now: open, done, scheduled or missing."""
+def vault_state(paths: VaultPaths, note_path: str, description: str) -> tuple[str, list[int]]:
+    """What the vault says about an Entry right now: open, done, scheduled or missing.
+
+    When the note holds the same wording more than once in different states,
+    the answer is "ambiguous", with the line numbers of every match, rather
+    than whichever came first.
+    """
     try:
         target = paths.resolve(note_path)
     except VaultPathError:
-        return "missing"
+        return "missing", []
 
     wanted = history.entry_key(description)
     config = PlannerConfig.from_vault(paths.root)
+    matches: list[tuple[int, str]] = []
     for task in iter_tasks(target, note_path):
         text = task.description
         if block := split_time_block(text, config.default_duration_minutes):
             text = block[2]
         if history.entry_key(text) == wanted:
-            return "open" if task.is_open else task.status
+            matches.append((task.line_number, "open" if task.is_open else task.status))
+    if len({status for _, status in matches}) > 1:
+        return "ambiguous", [line for line, _ in matches]
+    if matches:
+        return matches[0][1], []
 
     # A Full Calendar event is its own note, with no checkbox to read.
     event = parse_event_note(target, note_path)
     if event is not None and history.entry_key(event.title) == wanted:
-        return "scheduled"
-    return "missing"
+        return "scheduled", []
+    return "missing", []
 
 
 def describe(paths: VaultPaths, entry: history.EntryHistory) -> dict:
-    status = vault_state(paths, entry.note_path, entry.description)
+    status, lines = vault_state(paths, entry.note_path, entry.description)
 
     created_at = next((c.at for c in entry.changes if c.kind == "created"), None)
     completed_at = None
@@ -75,6 +85,11 @@ def describe(paths: VaultPaths, entry: history.EntryHistory) -> dict:
         summary = "No longer in the vault" + (
             f"; last recorded as {last.kind} on {last.at:%a %-d %b %Y}." if last else "."
         )
+    elif status == "ambiguous":
+        summary = (
+            "Can't tell whether it's open: the note has it more than once, in "
+            f"different states (lines {', '.join(map(str, lines))})."
+        )
     else:
         summary = f"In the vault as {status}."
 
@@ -86,6 +101,7 @@ def describe(paths: VaultPaths, entry: history.EntryHistory) -> dict:
         "completed_at": stamp(completed_at),
         "open_for_days": open_for_days,
         "summary": summary,
+        **({"lines": lines} if lines else {}),
         "changes": [
             {"kind": c.kind, "at": stamp(c.at), "via": c.via} for c in entry.changes
         ],
